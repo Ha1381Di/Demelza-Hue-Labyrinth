@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Demelza Hue Labyrinth</title>
+    <style>
+        /* --- GLOBAL RESET & FIXED SCREEN --- */
+        * { box-sizing: border-box; }
+        html, body {
+            margin: 0; padding: 0;
+            width: 100vw; height: 100dvh;
+            overflow: hidden;
+            background-color: #12121c;
+            font-family: tahoma, sans-serif;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* Background Layer with subtle grid */
+        #bg-layer {
+            position: absolute; inset: 0;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+            background-size: 30px 30px;
+            z-index: 0;
+            overflow: hidden;
+        }
+
+        /* --- ROBOTS --- */
+        .robot {
+            position: absolute;
+            font-size: 53px;
+            cursor: pointer;
+            z-index: 1;
+            filter: drop-shadow(0 0 8px rgba(88, 86, 214, 0.8));
+            will-change: transform;
+            user-select: none;
+        }
+
+        .robot-bubble {
+            position: absolute;
+            bottom: 120%; left: 50%;
+            transform: translateX(-50%) translateY(10px);
+            background: #fff; color: #333;
+            padding: 10px 15px; border-radius: 15px;
+            font-size: 13px; font-family: tahoma;
+            width: max-content; max-width: 220px;
+            text-align: center;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            opacity: 0; visibility: hidden;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            pointer-events: none; line-height: 1.4;
+            border: 2px solid #5856D6;
+        }
+        .robot-bubble::after {
+            content: ''; position: absolute;
+            top: 100%; left: 50%; transform: translateX(-50%);
+            border: 8px solid transparent; border-top-color: #5856D6;
+        }
+        .robot.active .robot-bubble {
+            opacity: 1; visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* --- 1. OUTER BOX (50% Transparent) --- */
+        #wrapper {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            width: 95vw; height: 95dvh;
+            max-width: 800px;
+            background-color: rgba(232, 229, 230, 0.5); /* 50% Transparent */
+            border-radius: 30px;
+            box-shadow: 0 15px 40px rgba(0,0,0,0.7), 0 0 0 4px rgba(255, 255, 255, 0.8);
+            z-index: 10;
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: space-between;
+            padding: 15px;
+            /* Allows clicking robots through empty space of the outer box */
+            pointer-events: none; 
+        }
+
+        /* Make sure UI elements inside outer box are clickable and solid */
+        #levels, .top-controls, #yourturn {
+            pointer-events: auto;
+        }
+        
+        /* Top Controls (100% Solid) */
+        .top-controls {
+            position: absolute;
+            top: 15px; right: 15px;
+            display: flex; gap: 5px;
+            z-index: 15;
+        }
+        .top-btn {
+            padding: 6px 10px;
+            font-size: clamp(10px, 2.5vw, 14px);
+            font-family: tahoma;
+            color: #fff;
+            border: none; border-radius: 8px;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            transition: background 0.2s;
+        }
+        .top-btn { background: #5856D6; } 
+        .top-btn:hover { background: #3F51B5; }
+        #music-btn { background: #4CD964; }
+        #music-btn:hover { background: #389e4a; }
+        #music-btn.muted { background: #FF3B30; }
+        #music-btn.muted:hover { background: #cc2f26; }
+
+        /* Level Header (100% Solid) */
+        #levels {
+            text-align: center;
+            width: 100%;
+            font-family: impact;
+            text-shadow: 1px 1px 2px rgba(150, 150, 150, 1);
+            flex-shrink: 0;
+            margin-top: 15px;
+        }
+        #levels h1 { letter-spacing: 2px; font-size: clamp(18px, 4vw, 28px); margin: 0; color: #000; }
+        #levels h2 { letter-spacing: 2px; font-family: tahoma; margin: 2px 0 5px; font-size: clamp(12px, 2.5vw, 16px); color: #000; }
+        #levels ol { margin: 0; padding: 0; display: flex; justify-content: center; flex-wrap: wrap; gap: 3px; }
+        #levels li { 
+            list-style: none; background: rgba(128,128,128,0.8); 
+            padding: 3px 0; width: clamp(24px, 5vw, 35px); 
+            font-size: clamp(10px, 2vw, 14px); color: #000;
+            display: inline-block; border-radius: 8px; font-weight: bold;
+        }
+        #levels li.playing { background: rgba(18, 210, 236, 1) }
+        #levels li.complete { background: rgba(156, 213, 156, 1) }
+
+        /* --- GAMEPAD CONTAINER & 2. INNER BOX (100% Solid) --- */
+        #gamepad-container {
+            flex-grow: 1; width: 100%;
+            display: flex; align-items: center; justify-content: center;
+            min-height: 0; padding: 10px;
+            pointer-events: none; 
+        }
+        #gamepad {
+            width: 100%;
+            max-width: min(550px, 70vh);
+            aspect-ratio: 1 / 1;
+            display: grid; grid-template-columns: repeat(4, 1fr);
+            gap: 2%; padding: 2%;
+            background: #ffffff; /* 100% Solid White to block robots */
+            border-radius: 20px;
+            box-shadow: inset 0 0 15px rgba(0,0,0,0.15), 0 5px 15px rgba(0,0,0,0.2);
+            pointer-events: auto; /* Catch clicks for the game */
+        }
+        .color-btn {
+            cursor: pointer; transition: all 0.2s ease-out;
+            background-color: var(--btn-color); opacity: 0.4;
+            width: 100%; height: 100%;
+            box-shadow: 0px 2px 4px rgba(0,0,0,0.3);
+            position: relative;
+        }
+        .color-btn:hover, .color-btn.blinkit {
+            opacity: 1; transform: scale(1.05);
+            box-shadow: 0px 0px 15px 5px rgba(255, 255, 255, 0.8), 0px 0px 20px var(--btn-color);
+        }
+        .color-btn:active { transform: scale(0.95); }
+
+        /* Shapes */
+        .shape-circle { border-radius: 50%; }
+        .shape-square { border-radius: 15%; }
+        .shape-triangle { clip-path: polygon(50% 0%, 0% 100%, 100% 100%); }
+        .shape-diamond { clip-path: polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%); }
+        .shape-pentagon { clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%); }
+        .shape-hexagon { clip-path: polygon(25% 0%, 75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%); }
+        .shape-octagon { clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%); }
+        .shape-star { clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%); }
+        .shape-cross { clip-path: polygon(35% 0, 65% 0, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0 65%, 0 35%, 35% 35%); }
+        .shape-right-triangle { clip-path: polygon(0 0, 0% 100%, 100% 100%); }
+        .shape-chevron { clip-path: polygon(75% 0%, 100% 50%, 75% 100%, 25% 100%, 0% 50%, 25% 0%); }
+        .shape-trapezoid { clip-path: polygon(20% 0%, 80% 0%, 100% 100%, 0% 100%); }
+        .shape-parallelogram { clip-path: polygon(25% 0%, 100% 0%, 75% 100%, 0% 100%); }
+        .shape-arrow { clip-path: polygon(0% 20%, 60% 20%, 60% 0%, 100% 50%, 60% 100%, 60% 80%, 0% 80%); }
+
+        /* Your Turn Text */
+        #yourturn { 
+            display: none; text-align: center; 
+            width: 100%; margin: 0; padding-bottom: 10px;
+            font-family: impact; font-size: clamp(16px, 4vw, 24px); 
+            text-shadow: 1px 1px 2px rgba(150, 150, 150, 1);
+            flex-shrink: 0; color: #000;
+        }
+
+        @keyframes blink { 0%, 50% { opacity: 0 } 50.01%, 100% { opacity: 1 } }
+        blink { animation: blink 0.7s infinite linear alternate; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.15); } 100% { transform: scale(1); } }
+        .pulse { animation-name: pulse; animation-duration: 0.4s; }
+
+        /* --- 3. MENU BOX (100% Solid) --- */
+        #overlay { 
+            opacity: 1; position: absolute; inset: 0;
+            background: rgba(0, 0, 0, 0.4); /* Darkens the outer box when menu is open */
+            z-index: 20; 
+            transition: opacity 0.5s ease-in-out, visibility 0.5s linear;
+            display: flex; align-items: center; justify-content: center;
+            border-radius: 30px;
+            pointer-events: none; 
+        }
+        #overlay.hideoverlay { opacity: 0; visibility: hidden;}
+        
+        #overlay .outer { 
+            background: #1c1c24; /* 100% Solid Dark */
+            width: 90%; max-width: 500px; 
+            max-height: 90%; overflow-y: auto;
+            border-radius: 30px; border: 2px solid rgba(255,255,255,0.1); 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8); 
+            padding: 30px 20px;
+            display: flex; flex-direction: column; align-items: center;
+            pointer-events: auto; /* Re-enable clicks for menu */
+        }
+        
+        #overlay .inner { 
+            text-align: center; font-family: tahoma;
+            font-size: clamp(14px, 3.5vw, 18px); 
+            letter-spacing: 1px; width: 100%;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        #overlay p { color: #fff; text-shadow: 1px 2px rgba(0, 0, 0, 1); margin: 10px 0; }
+        #overlay #congrats, #overlay #ohnoes { display: none; margin-bottom: 20px; }
+        
+        #overlay button {
+            cursor: pointer; width: 80%; max-width: 300px; padding: 10px 0;
+            margin-top: 15px; font-family: impact; border-radius: 20px;
+            font-size: clamp(16px, 4vw, 20px); letter-spacing: 2px;
+            border: 0; box-shadow: 0px 0px 9px #fff;
+            position: relative; transition: all 0.2s;
+        }
+        #overlay button:hover { box-shadow: 0px 0px 5px 0px rgba(246, 212, 163, 0.5) inset, 0px -1px 5px 4px rgba(170, 77, 27, 0.2) inset, 0px 0px 9px #fff; }
+        #overlay button:active { top: 1px; }
+        
+        #restart-btn { background-color: #FF3B30; color: white; box-shadow: 0px 0px 9px #FF3B30 !important; display: none; }
+        #start { background-color: #fff; color: #000; }
+        #winner { display: none; font-size: clamp(18px, 5vw, 24px); line-height: 2; margin-top: 20px; }
+        
+        #instructions { font-size: clamp(11px, 3vw, 14px); text-align: left; margin-top: 20px; color: #fff; text-shadow: 1px 2px rgba(0, 0, 0, 1); width: 100%; }
+        #instructions ul { padding-left: 20px; margin-top: 10px; display: none; } 
+        #instructions li { margin-bottom: 5px; }
+        #instructionbutton { cursor: pointer; text-align: center; margin: 0; font-size: 16px; text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<!-- Background Layer for Robots -->
+<div id="bg-layer"></div>
+
+<div id="wrapper">
+    <div class="top-controls">
+        <button id="music-btn" class="top-btn">Music: ON</button>
+        <button id="menu-btn" class="top-btn">Main Menu</button>
+    </div>
+
+    <section id="levels">
+        <h1>DEMELZA HUE LABYRINTH</h1>
+        <h2>LEVEL</h2>
+        <ol>
+            <li>1</li><li>2</li><li>3</li><li>4</li><li>5</li>
+            <li>6</li><li>7</li><li>8</li><li>9</li><li>10</li>
+        </ol>
+    </section>
+  
+    <div id="gamepad-container">
+        <section id="gamepad"></section>
+    </div>
+    
+    <p id="yourturn"><blink>ENTER CODE SEQUENCE</blink></p>
+    
+    <section id="overlay">
+        <div class="outer">
+            <div class="inner">
+                <p id="ohnoes">Oops!! You didn't match the code.</p>
+                <p id="congrats">Well done, you've completed level <span id="prevlevel"></span></p>
+                <p id="info">Press start button to enter level <span id="whichlevel"></span></p>
+                
+                <button id="start">Start</button>
+                <button id="restart-btn">Restart Level 1</button>
+                
+                <p id="winner">!! CONGRATULATIONS !!<br />!! WINNER !!</p>
+                
+                <div id="instructions">
+                    <h2 id="instructionbutton">Instructions (Click to Open)</h2>
+                    <ul id="instruction-list">
+                        <li>At each level you will be presented with colored geometric shapes.</li>
+                        <li>The number of shapes increases from 10 to 16 as you level up.</li>
+                        <li>Each shape will pulse, glow, and play a musical note.</li>
+                        <li>When the 'ENTER CODE SEQUENCE' message displays, click the shapes in the exact order shown.</li>
+                        <li>If your entry matches, the sequence gets longer.</li>
+                        <li>If you make a mistake, you must restart the level!</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+</div>
+  
+<script>
+    // --- ROBOT BACKGROUND LOGIC ---
+    const AI_FACTS = [
+        "AI speeds up medical research and drug discovery.",
+        "AI improves accessibility with real-time translation.",
+        "AI helps predict natural disasters and save lives.",
+        "AI personalizes learning for students of all ages.",
+        "AI automates repetitive tasks, freeing up time.",
+        "AI optimizes energy grids to reduce emissions.",
+        "AI detects financial fraud in real-time.",
+        "AI assists in early detection of diseases.",
+        "AI powers self-driving cars to reduce accidents.",
+        "AI analyzes climate data to combat global warming.",
+        "AI helps farmers monitor crops and save water.",
+        "AI breaks down communication barriers instantly.",
+        "AI creates realistic 3D models for architecture.",
+        "AI helps scientists discover new exoplanets.",
+        "AI improves customer service with smart chatbots.",
+        "AI generates art and music as a creative partner.",
+        "AI optimizes supply chains to reduce waste.",
+        "AI helps people with disabilities navigate safely.",
+        "AI can analyze complex legal documents in seconds.",
+        "AI provides personalized workout and nutrition plans.",
+        "AI enhances cybersecurity by detecting threats.",
+        "AI helps design safer and more efficient buildings.",
+        "AI predicts weather patterns with high accuracy.",
+        "AI helps recyclers sort materials efficiently.",
+        "AI can compose original music in seconds.",
+        "AI helps historians restore ancient texts.",
+        "AI powers smart homes to save energy.",
+        "AI helps doctors analyze X-rays and MRIs.",
+        "AI generates code to help developers build faster.",
+        "AI assists in wildlife conservation tracking."
+    ];
+
+    class Robot {
+        constructor() {
+            this.el = document.createElement('div');
+            this.el.className = 'robot';
+            this.el.innerHTML = `<div class="robot-bubble"></div>🤖`;
+            document.getElementById('bg-layer').appendChild(this.el);
+            
+            this.bubble = this.el.querySelector('.robot-bubble');
+            
+            this.x = Math.random() * (window.innerWidth - 80);
+            this.y = Math.random() * (window.innerHeight - 80);
+            this.targetX = this.x;
+            this.targetY = this.y;
+            this.speed = 0.5 + Math.random() * 1.5;
+            this.paused = false;
+            this.timeout = null;
+            
+            this.el.addEventListener('mouseenter', () => this.speak());
+            this.el.addEventListener('touchstart', (e) => { 
+                e.preventDefault(); 
+                this.speak(); 
+            }, {passive: false});
+            
+            this.pickNewTarget();
+            this.render();
+        }
+        
+        pickNewTarget() {
+            this.targetX = Math.random() * (window.innerWidth - 80);
+            this.targetY = Math.random() * (window.innerHeight - 80);
+        }
+        
+        render() {
+            this.el.style.transform = `translate(${this.x}px, ${this.y}px)`;
+        }
+        
+        update() {
+            if (this.paused) return;
+            
+            let dx = this.targetX - this.x;
+            let dy = this.targetY - this.y;
+            let distance = Math.sqrt(dx*dx + dy*dy);
+            
+            if (distance < 5) {
+                this.pickNewTarget();
+            } else {
+                this.x += (dx / distance) * this.speed;
+                this.y += (dy / distance) * this.speed;
+                this.render();
+            }
+        }
+        
+        speak() {
+            if (this.paused) return;
+            this.paused = true;
+            
+            this.bubble.textContent = AI_FACTS[Math.floor(Math.random() * AI_FACTS.length)];
+            this.el.classList.add('active');
+            
+            clearTimeout(this.timeout);
+            this.timeout = setTimeout(() => {
+                this.paused = false;
+                this.el.classList.remove('active');
+                this.pickNewTarget();
+            }, 3000);
+        }
+    }
+
+    const robots = [];
+    for (let i = 0; i < 10; i++) { robots.push(new Robot()); }
+
+    function animateRobots() {
+        robots.forEach(r => r.update());
+        requestAnimationFrame(animateRobots);
+    }
+    animateRobots();
+
+    window.addEventListener('resize', () => {
+        robots.forEach(r => r.pickNewTarget());
+    });
+
+
+    // --- AUDIO ENGINE ---
+    var AudioEngine = (function() {
+        var audioCtx = null, musicMuted = false, musicInterval = null;
+        var scaleFrequencies = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25, 783.99, 880.00, 1046.50, 1174.66, 1318.51, 1567.98, 1760.00, 2093.00];
+        var bgChords = [
+            [130.81, 164.81, 196.00, 246.94], [174.61, 220.00, 261.63, 329.63],
+            [110.00, 130.81, 164.81, 196.00], [196.00, 246.94, 293.66, 349.23]
+        ];
+        var currentChordIndex = 0, chordStep = 0;
+
+        function init() {
+            if (!audioCtx) {
+                audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                startBackgroundMusic();
+            } else if (audioCtx.state === 'suspended') {
+                audioCtx.resume();
+            }
+        }
+
+        function playShapeTone(index) {
+            if (!audioCtx || musicMuted) return;
+            var freq = scaleFrequencies[index % scaleFrequencies.length];
+            var osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+            osc.type = 'sine'; osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0, audioCtx.currentTime);
+            gain.gain.linearRampToValueAtTime(0.4, audioCtx.currentTime + 0.02);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.8);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.8);
+        }
+
+        function playPianoNote(freq, time) {
+            if (musicMuted || !audioCtx) return;
+            var osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+            osc.type = 'triangle'; osc.frequency.setValueAtTime(freq, time);
+            gain.gain.setValueAtTime(0, time);
+            gain.gain.linearRampToValueAtTime(0.06, time + 0.1);
+            gain.gain.exponentialRampToValueAtTime(0.001, time + 2.5);
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.start(time); osc.stop(time + 2.5);
+        }
+
+        function startBackgroundMusic() {
+            if (musicInterval) return;
+            musicInterval = setInterval(function() {
+                if (musicMuted || !audioCtx) return;
+                var chord = bgChords[currentChordIndex], now = audioCtx.currentTime;
+                playPianoNote(chord[0], now); playPianoNote(chord[1], now + 0.3);
+                playPianoNote(chord[2], now + 0.6); playPianoNote(chord[3], now + 0.9);
+                chordStep++;
+                if (chordStep >= 2) { chordStep = 0; currentChordIndex = (currentChordIndex + 1) % bgChords.length; }
+            }, 2000);
+        }
+
+        function toggleMusic() {
+            musicMuted = !musicMuted;
+            var btn = document.getElementById('music-btn');
+            if (musicMuted) { btn.textContent = "Music: OFF"; btn.classList.add('muted'); }
+            else { btn.textContent = "Music: ON"; btn.classList.remove('muted'); init(); }
+        }
+
+        return { init: init, playShapeTone: playShapeTone, toggleMusic: toggleMusic };
+    })();
+
+
+    // --- GAME LOGIC ---
+    var CodePad = (function() {
+        var _thisGame, _codeSequence = [], _interval = 350, _inPlay = 0, _maxLevel = 10;
+        var _levelBoxes = document.getElementsByTagName('li'), _timeouts = [];
+
+        var _colors = ['#FF3B30', '#4CD964', '#007AFF', '#FFCC00', '#FF9500', '#5856D6', '#FF2D55', '#5AC8FA', '#E040FB', '#18FFFF', '#8BC34A', '#795548', '#3F51B5', '#827717', '#880E4F', '#FFD54F'];
+        var _shapes = ['shape-circle', 'shape-square', 'shape-triangle', 'shape-diamond', 'shape-pentagon', 'shape-hexagon', 'shape-octagon', 'shape-star', 'shape-cross', 'shape-right-triangle', 'shape-chevron', 'shape-trapezoid', 'shape-parallelogram', 'shape-arrow', 'shape-circle', 'shape-square'];
+
+        var clearAllTimers = function() { _timeouts.forEach(clearTimeout); _timeouts = []; };
+        var safeTimeout = function(fn, delay) { var id = setTimeout(fn, delay); _timeouts.push(id); };
+
+        var getLevelConfig = function(level) {
+            var numColors = Math.floor(10 + (level - 1) * (16 - 10) / 9);
+            var seqLength = level + 3; 
+            return { numColors: numColors, seqLength: seqLength };
+        };
+
+        var getLS = function() {
+            var stored = localStorage.getItem("CodePadState");
+            if (stored) { try { _thisGame = JSON.parse(stored); } catch(e) { _thisGame = { count: 0, code_step: 0, level: 1 }; updateLS(); } }
+            else { _thisGame = { count: 0, code_step: 0, level: 1 }; updateLS(); }
+        };
+
+        var updateLS = function() { localStorage.setItem("CodePadState", JSON.stringify(_thisGame)); };
+
+        var setupCodePad = function() {
+            clearAllTimers();
+            var config = getLevelConfig(_thisGame.level), gamepad = document.getElementById('gamepad');
+            gamepad.innerHTML = ''; 
+
+            for (var i = 0; i < config.numColors; i++) {
+                var btn = document.createElement('div');
+                btn.className = 'color-btn ' + _shapes[i];
+                btn.dataset.id = i + 1; 
+                btn.style.setProperty('--btn-color', _colors[i]);
+                gamepad.appendChild(btn);
+            }
+
+            _codeSequence = [];
+            for (var j = 0; j < config.seqLength; j++) { _codeSequence[j] = Math.floor(Math.random() * config.numColors) + 1; }
+            setupLevels();
+        };
+
+        var setupLevels = function() {
+            updateLS();
+            document.getElementById('ohnoes').style.display = 'none';
+            document.getElementById('whichlevel').textContent = _thisGame.level;
+            
+            var restartBtn = document.getElementById('restart-btn'), startBtn = document.getElementById('start');
+            if (_thisGame.level > 1) {
+                document.getElementById('congrats').style.display = 'block';
+                document.getElementById('prevlevel').textContent = _thisGame.level - 1;
+                restartBtn.style.display = 'inline-block';
+            } else {
+                document.getElementById('congrats').style.display = 'none';
+                restartBtn.style.display = 'none';
+            }
+            
+            for (var i = 0; i < _thisGame.level - 1; i++) { _levelBoxes[i].className = 'complete'; }
+            _levelBoxes[_thisGame.level - 1].className = 'playing';
+        };
+
+        var startOrStop = function() {
+            AudioEngine.init();
+            _inPlay = 1;
+            toggleOverlay(0);
+            safeTimeout(function(){ startGame(); }, 1200); 
+        };
+
+        var startGame = function() {
+            _thisGame.count = 0;
+            for (var i = 0; i <= _thisGame.code_step; i++) { blinkIt(i, i == _thisGame.code_step); }
+        };
+
+        var goToMenu = function() {
+            _inPlay = 0; clearAllTimers(); toggleGoText(0);
+            document.querySelectorAll('.color-btn').forEach(function(btn) { btn.classList.remove('blinkit', 'pulse'); });
+            toggleOverlay(1);
+        };
+
+        var restartGame = function() {
+            _inPlay = 0; clearAllTimers();
+            _thisGame = { count: 0, code_step: 0, level: 1 };
+            updateLS(); setupCodePad(); toggleOverlay(1);
+        };
+
+        var toggleOverlay = function(w) { document.getElementById('overlay').className = w == 1 ? '' : 'hideoverlay'; };
+        var toggleInstructions = function() {
+            var list = document.getElementById('instruction-list');
+            list.style.display = (list.style.display === 'block') ? 'none' : 'block';
+        };
+        var toggleGoText = function(w) { document.getElementById('yourturn').style.display = w == 1 ? 'block' : 'none'; };
+
+        function blinkIt(i, last) { safeTimeout(function() { blinkCode(_codeSequence[i], last); }, i * _interval); }
+        function blinkCode(colorId, last) {
+            var btn = document.querySelector('.color-btn[data-id="' + colorId + '"]');
+            if (!btn) return;
+            AudioEngine.playShapeTone(colorId - 1);
+            btn.classList.add('blinkit', 'pulse');
+            safeTimeout(function() { btn.classList.remove('blinkit', 'pulse'); }, 175);
+            if (last == true) toggleGoText(1);
+        }
+
+        var levelUp = function() {
+            if (_thisGame.level == _maxLevel) { winner(); return; }
+            _thisGame.level++; nextLevel();
+        };
+
+        var nextLevel = function() { _thisGame.code_step = 0; setupCodePad(); toggleOverlay(1); };
+
+        var failedLevel = function() {
+            _inPlay = 0; clearAllTimers(); toggleGoText(0);
+            document.getElementById('congrats').style.display = 'none';
+            document.getElementById('ohnoes').style.display = 'block';
+            toggleOverlay(1);
+        };
+
+        var winner = function() {
+            _inPlay = 0;
+            document.getElementById('congrats').style.display = 'none';
+            document.getElementById('ohnoes').style.display = 'none';
+            document.getElementById('info').style.display = 'none';
+            document.getElementById('start').style.display = 'none';
+            document.getElementById('restart-btn').style.display = 'none';
+            document.getElementById('winner').style.display = 'block';
+        };
+
+        var checkCode = function(e) {
+            if (_inPlay == 0) return;
+            var target = e.target;
+            if (!target.classList.contains('color-btn')) return;
+
+            var thisCID = parseInt(target.dataset.id);
+            AudioEngine.playShapeTone(thisCID - 1);
+            
+            if (_codeSequence[_thisGame.count] != thisCID) { failedLevel(); } 
+            else if (_thisGame.count == _thisGame.code_step) {
+                _thisGame.code_step++; toggleGoText(0);
+                if (_thisGame.code_step == _codeSequence.length) { levelUp(); return; } 
+                else { safeTimeout(function() { startGame(); }, 700); }
+            }
+            _thisGame.count++;
+        };
+
+        var events = function() {
+            document.getElementById("instructionbutton").onclick = toggleInstructions;
+            document.getElementById("start").onclick = startOrStop;
+            document.getElementById("menu-btn").onclick = goToMenu;
+            document.getElementById("restart-btn").onclick = restartGame;
+            document.getElementById("music-btn").onclick = AudioEngine.toggleMusic;
+            
+            document.getElementById("gamepad").addEventListener('click', function(e) {
+                if (e.target && e.target.classList.contains('color-btn')) { checkCode(e); }
+            });
+        };
+
+        var init = function() { getLS(); setupCodePad(); events(); };
+        return { init: init };
+    })();
+
+    CodePad.init();
+</script>
+</body>
+</html>
